@@ -16,10 +16,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code
 COPY . .
 
-# Expose port for FastAPI
-EXPOSE 8000
+ENV PORT=8080
+ENV HOST=0.0.0.0
+ENV ANONYMIZED_TELEMETRY=False
 
-# The default command runs the Uvicorn server.
-# Note: For Celery, you would override the command in your docker-compose or deployment setup:
-# CMD ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info", "-Q", "ingestion"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8080
+
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]

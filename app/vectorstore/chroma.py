@@ -13,28 +13,24 @@ logger = structlog.get_logger(__name__)
 COLLECTION_NAME = "lms_documents"
 
 
+from chromadb.config import Settings
+
 class ChromaStore:
     def __init__(self) -> None:
-        if settings.chroma_host:
-            self.client = chromadb.HttpClient(
-                host=settings.chroma_host, 
-                port=settings.chroma_port
-            )
-            logger.info(
-                "chroma_initialized",
-                mode="http",
-                host=settings.chroma_host,
-                port=settings.chroma_port,
-                collection=COLLECTION_NAME
-            )
-        else:
-            self.client = chromadb.PersistentClient(path=settings.chroma_persist_directory)
-            logger.info(
-                "chroma_initialized",
-                mode="persistent",
-                path=settings.chroma_persist_directory,
-                collection=COLLECTION_NAME
-            )
+        CHROMA_DATA_PATH = settings.chroma_persist_directory
+        
+        # Instead of connecting to a remote server, we run Chroma directly in the FastAPI process
+        self.client = chromadb.PersistentClient(
+            path=CHROMA_DATA_PATH,
+            settings=Settings(allow_reset=True)
+        )
+        
+        logger.info(
+            "chroma_initialized",
+            mode="persistent",
+            path=CHROMA_DATA_PATH,
+            collection=COLLECTION_NAME
+        )
 
         self.collection: Collection = self.client.get_or_create_collection(
             name=COLLECTION_NAME,
