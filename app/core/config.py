@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     database_url: str
     gcs_bucket_name: str
     google_application_credentials: str | None = None
-    chroma_persist_directory: str = "./chroma_db"
+    chroma_persist_directory: str = "/tmp/chroma_db"
     chroma_host: str | None = None
     chroma_port: int = 8000
     redis_url: str = "redis://localhost:6379/0"
