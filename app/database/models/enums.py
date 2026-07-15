@@ -1,0 +1,20 @@
+from enum import Enum
+
+class DocumentStatus(str,Enum):
+    PENDING="PENDING"
+    PROCESSING="PROCESSING"
+    COMPLETED="COMPLETED"
+    FAILED="FAILED"
+
+
+class DocumentType(str,Enum):
+    BOOK="BOOK"
+    CHAPTER="CHAPTER"
+    NOTES="NOTES"
+    QUESTION_BANK="QUESTION_BANK"
+    MCQ="MCQ"
+    TRANSCRIPT="TRANSCRIPT"
+    GLOSSARY="GLOSSARY"
+    FORMULA_SHEET="FORMULA_SHEET"
+    CHEAT_SHEET="CHEAT_SHEET"
+    OTHER="OTHER"
