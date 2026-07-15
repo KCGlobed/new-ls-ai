@@ -1,6 +1,6 @@
 import structlog
 from fastapi import FastAPI
-
+from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.middleware.request_logger import RequestLoggerMiddleware
@@ -23,6 +23,13 @@ app = FastAPI(
 )
 
 # ── 3. Register middleware (order matters — outermost first) ───────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.add_middleware(RequestLoggerMiddleware)
 
 # ── 4. Register routers ────────────────────────────────────────────────────
