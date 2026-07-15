@@ -15,15 +15,30 @@ COLLECTION_NAME = "lms_documents"
 
 class ChromaStore:
     def __init__(self) -> None:
-        self.client = chromadb.PersistentClient(path=settings.chroma_persist_directory)
+        if settings.chroma_host:
+            self.client = chromadb.HttpClient(
+                host=settings.chroma_host, 
+                port=settings.chroma_port
+            )
+            logger.info(
+                "chroma_initialized",
+                mode="http",
+                host=settings.chroma_host,
+                port=settings.chroma_port,
+                collection=COLLECTION_NAME
+            )
+        else:
+            self.client = chromadb.PersistentClient(path=settings.chroma_persist_directory)
+            logger.info(
+                "chroma_initialized",
+                mode="persistent",
+                path=settings.chroma_persist_directory,
+                collection=COLLECTION_NAME
+            )
+
         self.collection: Collection = self.client.get_or_create_collection(
             name=COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},
-        )
-        logger.info(
-            "chroma_initialized",
-            collection=COLLECTION_NAME,
-            path=settings.chroma_persist_directory,
         )
 
     def upsert_chunks(
