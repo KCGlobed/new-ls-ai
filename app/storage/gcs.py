@@ -1,5 +1,6 @@
 import logging
 
+import os
 from google.cloud import storage
 from google.cloud.storage import Bucket
 
@@ -14,7 +15,7 @@ class GoogleCloudStorage(StorageProvider):
 
     def __init__(self) -> None:
         try:
-            if settings.google_application_credentials:
+            if settings.google_application_credentials and os.path.exists(settings.google_application_credentials):
                 self.client = storage.Client.from_service_account_json(
                     settings.google_application_credentials
                 )
