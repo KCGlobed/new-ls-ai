@@ -3,7 +3,7 @@ import shutil
 
 import structlog
 import structlog.contextvars
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -20,6 +20,7 @@ logger = structlog.get_logger(__name__)
 @router.post("/")
 async def upload_document(
     request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: Users = Depends(get_current_user),
@@ -90,8 +91,9 @@ async def upload_document(
 
         from app.workers.tasks.ingestion import ingest_document
         
-        # Trigger background celery task to process the file
-        ingest_document.delay(
+        # Trigger background task within the FastAPI process
+        background_tasks.add_task(
+            ingest_document,
             document_id=str(document.id),
             storage_path=destination_path,  
             mime_type=file.content_type,

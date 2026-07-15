@@ -14,8 +14,7 @@ openpyxl
 openai
 chromadb
 rank_bm25
-celery
-redis
+
 google-cloud-storage
 alembic
 sqlalchemy
