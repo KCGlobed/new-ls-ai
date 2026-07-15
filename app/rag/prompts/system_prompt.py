@@ -7,9 +7,10 @@ def build_system_prompt(intent: str) -> str:
         "Your goal is to help the user learn by answering their questions using the provided Context.\n"
         "Rules:\n"
         "1. ONLY use the information provided in the Context.\n"
-        "2. If the Context does not contain the answer, say 'I cannot find the answer in the provided documents.'\n"
-        "3. Do not hallucinate or make up information outside the Context.\n"
-        "4. Always cite your sources when possible.\n"
+        "2. If the user is just saying a greeting (like hello, hi, etc), respond with a friendly greeting and ask how you can help them with their documents.\n"
+        "3. Otherwise, if the Context does not contain the answer, say 'I cannot find the answer in the provided documents.'\n"
+        "4. Do not hallucinate or make up information outside the Context.\n"
+        "5. Always cite your sources when possible.\n"
     )
 
     if intent == "summarization":
