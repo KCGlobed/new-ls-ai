@@ -48,6 +48,7 @@ async def chat_endpoint(
             query=chat_req.query,
             user_id=str(current_user.id),
             history=history,
+            db=db,
             document_ids=chat_req.document_ids
         )
 

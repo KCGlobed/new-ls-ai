@@ -8,9 +8,10 @@ def build_system_prompt(intent: str) -> str:
         "Rules:\n"
         "1. ONLY use the information provided in the Context.\n"
         "2. If the user is just saying a greeting (like hello, hi, etc), respond with a friendly greeting and ask how you can help them with their documents.\n"
-        "3. Otherwise, if the Context does not contain the answer, say 'I cannot find the answer in the provided documents.'\n"
-        "4. Do not hallucinate or make up information outside the Context.\n"
-        "5. Always cite your sources when possible.\n"
+        "3. If the user asks about specific student records, grades, or enrollment status, you MUST use the `get_student_data` tool to fetch their information from the database.\n"
+        "4. Otherwise, if the Context does not contain the answer and you have no relevant tools, say 'I cannot find the answer in the provided documents.'\n"
+        "5. Do not hallucinate or make up information outside the Context or Tool results.\n"
+        "6. Always cite your sources when possible.\n"
     )
 
     if intent == "summarization":
