@@ -14,9 +14,7 @@ class Conversation(Base):
     )
     # Groups messages belonging to the same chat session
     session_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     role: Mapped[str] = mapped_column(String(20), nullable=False)    # "user" | "assistant"
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
