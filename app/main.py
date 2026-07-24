@@ -25,7 +25,13 @@ app = FastAPI(
 # ── 3. Register middleware (order matters — outermost first) ───────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://lms-dev-v2.web.app",
+        "https://pro.kcglobed.com",
+        "https://new-lms-ai-frontend-233960786746.europe-west1.run.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
