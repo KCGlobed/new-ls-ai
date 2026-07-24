@@ -173,7 +173,7 @@ async def delete_document(document_id: str, db: Session = Depends(get_db)):
         # Delete from ChromaDB
         from app.vectorstore.chroma import ChromaStore
         chroma = ChromaStore()
-        chroma.delete_by_document(document_id)
+        chroma.delete_document_chunks(document_id)
 
         # Delete from GCS
         storage = GoogleCloudStorage()
