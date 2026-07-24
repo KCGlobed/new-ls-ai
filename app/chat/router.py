@@ -8,10 +8,10 @@ from app.database.dependencies import get_db, get_lms_db
 from app.chat.schemas import ChatRequest, ChatResponse
 from app.rag.pipeline import RAGPipeline
 from app.rag.memory.long_term import LongTermMemory
+from app.database.models.conversation import Conversation
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 logger = structlog.get_logger(__name__)
-
 
 import json
 from fastapi.responses import StreamingResponse
@@ -46,7 +46,8 @@ async def chat_endpoint(
 
     # Fetch long-term memory history for this session (from our DB)
     memory = LongTermMemory(db)
-    history = memory.get_session_history(chat_req.session_id, limit=6)
+    # 15 messages is a great sweet spot for context (approx 7-8 turns)
+    history = memory.get_session_history(chat_req.session_id, limit=15)
 
     async def generate():
         pipeline = RAGPipeline()
@@ -103,3 +104,48 @@ async def chat_endpoint(
             yield f"data: {json.dumps({'chunk': 'An error occurred while answering your question.'})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+@router.get("/history")
+def get_chat_history(
+    userId: str = Query(..., description="LMS user ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns a list of all chat sessions for the given user, ordered by most recent.
+    Acts like the ChatGPT sidebar history.
+    """
+    # Fetch all user messages for this user, ordered by oldest first 
+    # (so we capture the very first message as the title)
+    conversations = (
+        db.query(Conversation)
+        .filter(Conversation.user_id == userId, Conversation.role == "user")
+        .order_by(Conversation.created_at.asc())
+        .all()
+    )
+    
+    # Group by session_id in Python to get unique sessions and their first message
+    sessions_map = {}
+    for conv in conversations:
+        if conv.session_id not in sessions_map:
+            # Create a short title from the first message
+            title = conv.content
+            if len(title) > 40:
+                title = title[:40] + "..."
+                
+            sessions_map[conv.session_id] = {
+                "session_id": conv.session_id,
+                "title": title,
+                "created_at": conv.created_at.isoformat()
+            }
+        else:
+            # We also update the created_at to the latest message so we can sort by most recent activity
+            sessions_map[conv.session_id]["updated_at"] = conv.created_at.isoformat()
+            
+    # Sort sessions by newest first
+    sorted_sessions = sorted(
+        sessions_map.values(), 
+        key=lambda x: x.get("updated_at", x["created_at"]), 
+        reverse=True
+    )
+    
+    return {"sessions": sorted_sessions}
