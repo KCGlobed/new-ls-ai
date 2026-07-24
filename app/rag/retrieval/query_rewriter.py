@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 import structlog
 from openai import AsyncOpenAI
 

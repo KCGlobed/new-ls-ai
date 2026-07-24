@@ -8,6 +8,7 @@ from app.audit import AuditEvent, write_audit
 from app.database.dependencies import get_db
 from app.database.models.users import Users
 from app.chat.schemas import ChatRequest, ChatResponse
+from app.database.models.lms import LMSUser
 from app.rag.pipeline import RAGPipeline
 from app.rag.memory.long_term import LongTermMemory
 
@@ -42,11 +43,14 @@ async def chat_endpoint(
         memory = LongTermMemory(db)
         history = memory.get_session_history(chat_req.session_id, limit=6)
 
+        # Resolve the LMS User ID for tools
+        lms_user_id = chat_req.user_id or str(current_user.id)
+
         # Run pipeline
         pipeline = RAGPipeline()
         answer_data, metrics = await pipeline.run(
             query=chat_req.query,
-            user_id=str(current_user.id),
+            user_id=lms_user_id,
             history=history,
             db=db,
             document_ids=chat_req.document_ids

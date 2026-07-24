@@ -5,6 +5,7 @@ class ChatRequest(BaseModel):
     query: str
     session_id: str
     document_ids: Optional[List[str]] = None
+    user_id: Optional[str] = None
 
 class CitationSchema(BaseModel):
     id: int
