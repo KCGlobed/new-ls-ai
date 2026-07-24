@@ -1,0 +1,39 @@
+steps:
+  # Step 1: Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Build'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/lms-ai:$COMMIT_SHA'
+      - '.'
+
+  # Step 2: Push the image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Push'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/lms-ai:$COMMIT_SHA'
+
+  # Step 3: Deploy to Cloud Run with all required env vars
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'Deploy'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'services'
+      - 'update'
+      - 'lms-ai'
+      - '--image=gcr.io/$PROJECT_ID/lms-ai:$COMMIT_SHA'
+      - '--region=europe-west1'
+      - '--platform=managed'
+      - '--port=8080'
+      - '--timeout=300'
+      - '--set-env-vars=APP_NAME=LMS Assistant,APP_ENV=production,GCS_BUCKET_NAME=ai-lms,CHROMA_PERSIST_DIRECTORY=/tmp/chroma_db,ALGORITHM=HS256,ACCESS_TOKEN_EXPIRE_MINUTES=1440'
+      - '--set-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest,DATABASE_URL=DATABASE_URL:latest,SECRET_KEY=SECRET_KEY:latest'
+
+images:
+  - 'gcr.io/$PROJECT_ID/lms-ai:$COMMIT_SHA'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

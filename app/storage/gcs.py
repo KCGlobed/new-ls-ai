@@ -15,11 +15,17 @@ class GoogleCloudStorage(StorageProvider):
 
     def __init__(self) -> None:
         try:
-            if settings.google_application_credentials and os.path.exists(settings.google_application_credentials):
+            # On Cloud Run (same project), ADC is automatically available.
+            # Fall back to service account JSON only if the file exists locally.
+            if (
+                settings.google_application_credentials
+                and os.path.exists(settings.google_application_credentials)
+            ):
                 self.client = storage.Client.from_service_account_json(
                     settings.google_application_credentials
                 )
             else:
+                # Uses Application Default Credentials (ADC) — works automatically on Cloud Run
                 self.client = storage.Client()
             
             self.bucket: Bucket = self.client.bucket(
