@@ -5,7 +5,8 @@ class Settings(BaseSettings):
     app_name: str = "LMS Assistant"
     app_env: str = "production"
     openai_api_key: str = ""
-    database_url: str = ""
+    database_url: str = ""          # This project DB
+    lms_database_url: str = ""      # LMS DB (read-only, raw SQL only)
     gcs_bucket_name: str = "ai-lms"
     google_application_credentials: str | None = None
     chroma_persist_directory: str = "/tmp/chroma_db"

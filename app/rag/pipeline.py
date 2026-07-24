@@ -37,6 +37,7 @@ class RAGPipeline:
         user_id: str,
         history: list[dict],
         db: Session,
+        lms_db: Session,
         document_ids: list[str] | None = None,
     ) -> tuple[dict, dict]:
         """
@@ -93,7 +94,7 @@ class RAGPipeline:
                 [c.get("text", "") for c in compressed]
             ) if compressed else "No relevant documents found."
             
-            response_text = await self._call_llm(rewritten_query, context_text, intent, history, db, user_id)
+            response_text = await self._call_llm(rewritten_query, context_text, intent, history, lms_db, user_id)
             tracker.log_latency("llm_generation", t6, time.time())
 
             # 8. Attach Citations
@@ -108,7 +109,7 @@ class RAGPipeline:
             metrics = tracker.finish()
             return {"answer": "An error occurred while processing your query.", "citations": []}, metrics
 
-    async def _call_llm(self, query: str, context: str, intent: str, history: list[dict], db: Session, user_id: str) -> str:
+    async def _call_llm(self, query: str, context: str, intent: str, history: list[dict], lms_db: Session, user_id: str) -> str:
         from app.agent.tools import AGENT_TOOLS, dispatch_tool
         
         system_prompt = build_system_prompt(intent)
@@ -138,7 +139,7 @@ class RAGPipeline:
             
             # Execute all tools requested by the model
             for tool_call in response_message.tool_calls:
-                function_response = dispatch_tool(tool_call, db, user_id)
+                function_response = dispatch_tool(tool_call, lms_db, user_id)
                 messages.append(
                     {
                         "tool_call_id": tool_call.id,

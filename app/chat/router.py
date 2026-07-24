@@ -1,14 +1,11 @@
 import structlog
 import structlog.contextvars
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
 from app.audit import AuditEvent, write_audit
-from app.database.dependencies import get_db
-from app.database.models.users import Users
+from app.database.dependencies import get_db, get_lms_db
 from app.chat.schemas import ChatRequest, ChatResponse
-from app.database.models.lms import LMSUser
 from app.rag.pipeline import RAGPipeline
 from app.rag.memory.long_term import LongTermMemory
 
@@ -20,11 +17,16 @@ logger = structlog.get_logger(__name__)
 async def chat_endpoint(
     chat_req: ChatRequest,
     request: Request,
+    userId: str = Query(..., description="LMS user ID passed from the host application"),
     db: Session = Depends(get_db),
-    current_user: Users = Depends(get_current_user),
+    lms_db: Session = Depends(get_lms_db),
 ):
+    """
+    Public endpoint for the chat widget. No authorization headers required.
+    userId is passed as a query string parameter from the host LMS.
+    """
     structlog.contextvars.bind_contextvars(
-        user_id=str(current_user.id),
+        user_id=userId,
         session_id=chat_req.session_id,
     )
     
@@ -33,33 +35,31 @@ async def chat_endpoint(
         db,
         AuditEvent.RAG_QUERY_STARTED,
         status="success",
-        user_id=str(current_user.id),
-        user_email=current_user.email,
+        user_id=userId,
+        user_email="lms_user",
         details={"session_id": chat_req.session_id}
     )
 
     try:
-        # Fetch long-term memory history for this session
+        # Fetch long-term memory history for this session (from our DB)
         memory = LongTermMemory(db)
         history = memory.get_session_history(chat_req.session_id, limit=6)
-
-        # Resolve the LMS User ID for tools
-        lms_user_id = chat_req.user_id or str(current_user.id)
 
         # Run pipeline
         pipeline = RAGPipeline()
         answer_data, metrics = await pipeline.run(
             query=chat_req.query,
-            user_id=lms_user_id,
+            user_id=userId,
             history=history,
             db=db,
+            lms_db=lms_db,
             document_ids=chat_req.document_ids
         )
 
-        # Save the new turn to history
+        # Save the new turn to history (in our DB)
         memory.save_turn(
             session_id=chat_req.session_id,
-            user_id=str(current_user.id),
+            user_id=userId,
             user_msg=chat_req.query,
             ai_msg=answer_data["answer"]
         )
@@ -68,8 +68,8 @@ async def chat_endpoint(
             db,
             AuditEvent.RAG_QUERY_SUCCESS,
             status="success",
-            user_id=str(current_user.id),
-            user_email=current_user.email,
+            user_id=userId,
+            user_email="lms_user",
             details={
                 "session_id": chat_req.session_id,
                 "metrics": metrics,
@@ -89,13 +89,11 @@ async def chat_endpoint(
             db,
             AuditEvent.RAG_QUERY_FAILURE,
             status="failure",
-            user_id=str(current_user.id),
-            user_email=current_user.email,
+            user_id=userId,
+            user_email="lms_user",
             details={"session_id": chat_req.session_id},
             error_message=str(exc)
         )
-        # Raise generic 500 error or return a friendly fallback message
-        # We will return the fallback answer to preserve user experience
         return ChatResponse(
             answer="An error occurred while answering your question. Please try again.",
             citations=[],

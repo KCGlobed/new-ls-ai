@@ -153,3 +153,35 @@ async def upload_document(
     finally:
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
+
+
+@router.get("/")
+async def list_documents(db: Session = Depends(get_db)):
+    """List all uploaded documents."""
+    docs = db.query(Document).order_by(Document.created_at.desc()).all()
+    return [{"id": d.id, "filename": d.original_filename, "size": d.file_size, "status": d.status.value, "created_at": d.created_at} for d in docs]
+
+
+@router.delete("/{document_id}")
+async def delete_document(document_id: str, db: Session = Depends(get_db)):
+    """Delete a document from DB, GCS, and ChromaDB."""
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        return {"error": "Document not found"}
+
+    try:
+        # Delete from ChromaDB
+        from app.vectorstore.chroma import ChromaStore
+        chroma = ChromaStore()
+        chroma.delete_by_document(document_id)
+
+        # Delete from GCS
+        storage = GoogleCloudStorage()
+        await storage.delete_file(doc.storage_path)
+    except Exception as e:
+        logger.error("delete_cleanup_failed", error=str(e))
+        # Proceed with DB deletion even if cleanup fails
+
+    db.delete(doc)
+    db.commit()
+    return {"status": "deleted", "document_id": document_id}

@@ -3,9 +3,6 @@ import structlog
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from sqlalchemy.sql import func
-from app.database.models.lms import PracticeTest, TestQuestion, QuestionOption, AssessmentTest, CourseRestriction
-
 logger = structlog.get_logger(__name__)
 
 # ── 1. Tool Schemas for OpenAI ──────────────────────────────────────────────
@@ -65,8 +62,8 @@ AGENT_TOOLS = [
 
 # ── 2. Tool Execution Logic ──────────────────────────────────────────────────
 
-def execute_get_student_tests_dashboard(arguments: str, db: Session, current_user_id: str) -> str:
-    """Read-only query to fetch student tests dashboard aggregates."""
+def execute_get_student_tests_dashboard(arguments: str, lms_db: Session, current_user_id: str) -> str:
+    """Read-only raw SQL query to fetch student tests dashboard aggregates from LMS DB."""
     try:
         args = json.loads(arguments) if arguments else {}
         target_user_id = args.get("student_user_id", current_user_id)
@@ -77,23 +74,40 @@ def execute_get_student_tests_dashboard(arguments: str, db: Session, current_use
             return f"Error: Invalid student ID format: {target_user_id}"
 
         # Practice Tests Aggregation
-        pt_completed = db.query(func.count(PracticeTest.id)).filter(PracticeTest.user_id == target_user_id_int, PracticeTest.status == True).scalar() or 0
-        pt_pending = db.query(func.count(PracticeTest.id)).filter(PracticeTest.user_id == target_user_id_int, PracticeTest.status == False).scalar() or 0
-        pt_avg_score = db.query(func.avg(PracticeTest.score)).filter(PracticeTest.user_id == target_user_id_int).scalar() or 0
+        pt_res = lms_db.execute(text("""
+            SELECT 
+                COUNT(*) FILTER (WHERE status = true) as completed,
+                COUNT(*) FILTER (WHERE status = false) as pending,
+                AVG(score) as avg_score
+            FROM practice_practicetests
+            WHERE user_id = :uid
+        """), {"uid": target_user_id_int}).fetchone()
+
+        pt_completed = pt_res.completed or 0
+        pt_pending = pt_res.pending or 0
+        pt_avg_score = pt_res.avg_score or 0
 
         # Mock (Assessment) Tests Aggregation
-        mt_completed = db.query(func.count(AssessmentTest.id)).filter(AssessmentTest.user_id == target_user_id_int, AssessmentTest.status == True).scalar() or 0
-        mt_avg_score = db.query(func.avg(AssessmentTest.score)).filter(AssessmentTest.user_id == target_user_id_int).scalar() or 0
+        mt_res = lms_db.execute(text("""
+            SELECT 
+                COUNT(*) FILTER (WHERE status = true) as completed,
+                AVG(score) as avg_score
+            FROM assessment_assessmenttests
+            WHERE user_id = :uid
+        """), {"uid": target_user_id_int}).fetchone()
+
+        mt_completed = mt_res.completed or 0
+        mt_avg_score = mt_res.avg_score or 0
 
         result = {
             "practice_tests": {
                 "completed": pt_completed,
                 "pending": pt_pending,
-                "average_score": round(pt_avg_score, 2)
+                "average_score": round(float(pt_avg_score), 2)
             },
             "mock_tests": {
                 "completed": mt_completed,
-                "average_score": round(mt_avg_score, 2)
+                "average_score": round(float(mt_avg_score), 2)
             }
         }
             
@@ -103,8 +117,8 @@ def execute_get_student_tests_dashboard(arguments: str, db: Session, current_use
         logger.error("tool_execution_failed", tool="get_student_tests_dashboard", error=str(e))
         return f"Database error occurred: {str(e)}"
 
-def execute_get_student_overall_progress(arguments: str, db: Session, current_user_id: str) -> str:
-    """Read-only query to fetch student overall progress and assigned courses."""
+def execute_get_student_overall_progress(arguments: str, lms_db: Session, current_user_id: str) -> str:
+    """Read-only raw SQL query to fetch student overall progress and assigned courses from LMS DB."""
     try:
         args = json.loads(arguments) if arguments else {}
         target_user_id = args.get("student_user_id", current_user_id)
@@ -115,12 +129,22 @@ def execute_get_student_overall_progress(arguments: str, db: Session, current_us
             return f"Error: Invalid student ID format: {target_user_id}"
 
         # Assigned Courses
-        courses_assigned = db.query(func.count(CourseRestriction.id)).filter(CourseRestriction.user_id == target_user_id_int).scalar() or 0
+        courses_assigned = lms_db.execute(text("""
+            SELECT COUNT(id) FROM subscription_coursesubjectrestriction WHERE user_id = :uid
+        """), {"uid": target_user_id_int}).scalar() or 0
         
         # Overall Performance (average of practice and mock)
-        pt_avg = db.query(func.avg(PracticeTest.score)).filter(PracticeTest.user_id == target_user_id_int).scalar() or 0
-        mt_avg = db.query(func.avg(AssessmentTest.score)).filter(AssessmentTest.user_id == target_user_id_int).scalar() or 0
+        pt_avg = lms_db.execute(text("""
+            SELECT AVG(score) FROM practice_practicetests WHERE user_id = :uid
+        """), {"uid": target_user_id_int}).scalar() or 0
         
+        mt_avg = lms_db.execute(text("""
+            SELECT AVG(score) FROM assessment_assessmenttests WHERE user_id = :uid
+        """), {"uid": target_user_id_int}).scalar() or 0
+        
+        pt_avg = float(pt_avg) if pt_avg else 0
+        mt_avg = float(mt_avg) if mt_avg else 0
+
         overall_performance = (pt_avg + mt_avg) / 2 if (pt_avg and mt_avg) else (pt_avg or mt_avg or 0)
 
         result = {
@@ -138,8 +162,8 @@ def execute_get_student_overall_progress(arguments: str, db: Session, current_us
         return f"Database error occurred: {str(e)}"
 
 
-def execute_get_question_solution(arguments: str, db: Session, current_user_id: str) -> str:
-    """Read-only query to fetch the correct option for a question."""
+def execute_get_question_solution(arguments: str, lms_db: Session, current_user_id: str) -> str:
+    """Read-only raw SQL query to fetch the correct option for a question from LMS DB."""
     try:
         args = json.loads(arguments)
         question_id = args.get("question_id")
@@ -147,8 +171,11 @@ def execute_get_question_solution(arguments: str, db: Session, current_user_id: 
         if not question_id:
             return "Error: Missing question_id argument."
 
-        # Safe SQLAlchemy read-only query
-        question = db.query(TestQuestion).filter(TestQuestion.id == question_id).first()
+        question = lms_db.execute(text("""
+            SELECT id, question_type, level, right_option_id 
+            FROM questions_testquestions 
+            WHERE id = :qid
+        """), {"qid": question_id}).fetchone()
         
         if not question:
             return f"No question found with ID: {question_id}"
@@ -163,9 +190,14 @@ def execute_get_question_solution(arguments: str, db: Session, current_user_id: 
         if not question.right_option_id:
             result["solution_text"] = "This question does not have a multiple choice correct option (it may be a simulation or essay)."
         else:
-            correct_option = db.query(QuestionOption).filter(QuestionOption.id == question.right_option_id).first()
+            correct_option = lms_db.execute(text("""
+                SELECT option 
+                FROM questions_questionoptions 
+                WHERE id = :opt_id
+            """), {"opt_id": question.right_option_id}).scalar()
+            
             if correct_option:
-                result["solution_text"] = correct_option.option
+                result["solution_text"] = correct_option
             else:
                 result["solution_text"] = f"Correct option ID {question.right_option_id} could not be found in the database."
                 
@@ -177,16 +209,16 @@ def execute_get_question_solution(arguments: str, db: Session, current_user_id: 
 
 # ── 3. Tool Dispatcher ───────────────────────────────────────────────────────
 
-def dispatch_tool(tool_call, db: Session, current_user_id: str) -> str:
+def dispatch_tool(tool_call, lms_db: Session, current_user_id: str) -> str:
     """Routes the tool call from OpenAI to the correct Python function."""
     function_name = tool_call.function.name
     arguments = tool_call.function.arguments
 
     if function_name == "get_student_tests_dashboard":
-        return execute_get_student_tests_dashboard(arguments, db, current_user_id)
+        return execute_get_student_tests_dashboard(arguments, lms_db, current_user_id)
     elif function_name == "get_student_overall_progress":
-        return execute_get_student_overall_progress(arguments, db, current_user_id)
+        return execute_get_student_overall_progress(arguments, lms_db, current_user_id)
     elif function_name == "get_question_solution":
-        return execute_get_question_solution(arguments, db, current_user_id)
+        return execute_get_question_solution(arguments, lms_db, current_user_id)
         
     return f"Error: Tool '{function_name}' is not implemented."
