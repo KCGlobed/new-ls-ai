@@ -89,16 +89,19 @@ async def upload_document(
             },
         )
 
-        from app.workers.tasks.ingestion import ingest_document
+        from app.upload.service import DocumentIngestionService
         
+        async def process_document_background():
+            service = DocumentIngestionService()
+            await service.ingest(
+                document_id=str(document.id),
+                storage_path=destination_path,
+                mime_type=file.content_type,
+                user_id=str(current_user.id)
+            )
+
         # Trigger background task within the FastAPI process
-        background_tasks.add_task(
-            ingest_document,
-            document_id=str(document.id),
-            storage_path=destination_path,  
-            mime_type=file.content_type,
-            user_id=str(current_user.id)
-        )
+        background_tasks.add_task(process_document_background)
 
         return {
             "status": "uploaded",
