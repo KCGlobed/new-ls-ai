@@ -51,6 +51,10 @@ class DocumentIngestionService:
         temp_file_path = f"/tmp/ingest_{document_id}"
         
         try:
+            print(f"\\n{'='*50}")
+            print(f"🚀 [INGESTION START] Document ID: {document_id}")
+            print(f"{'='*50}")
+
             logger.info(
                 "ingestion_started",
                 document_id=document_id,
@@ -65,15 +69,19 @@ class DocumentIngestionService:
             db.commit()
 
             # ── 0. Download from GCS ───────────────────────────────────────
+            print(f"📥 [1/7] Downloading file from GCS: {storage_path} -> {temp_file_path}")
             storage_provider = GoogleCloudStorage()
             await storage_provider.download_file(storage_path, temp_file_path)
 
             # ── 1. Load ────────────────────────────────────────────────────
+            print(f"📖 [2/7] Loading and parsing file (mime_type: {mime_type})...")
             loader = get_loader(mime_type)
             pages = loader.load(temp_file_path)
             document.page_count = len(pages)
+            print(f"   -> Extracted {len(pages)} pages.")
 
             # ── 2. Chunk ───────────────────────────────────────────────────
+            print(f"✂️  [3/7] Chunking document into parent & child chunks...")
             parent_chunks = self.chunker.chunk(pages)
             if not parent_chunks:
                 raise ValueError("No content extracted from document")
@@ -84,9 +92,12 @@ class DocumentIngestionService:
                 for parent in parent_chunks
                 for child in parent.children
             ]
+            print(f"   -> Created {len(parent_chunks)} parent chunks and {len(all_child_texts)} child chunks.")
+            print(f"🧠 [4/7] Generating OpenAI embeddings for {len(all_child_texts)} child chunks...")
             child_embeddings = await self.embedder.embed_batch(all_child_texts)
 
             # ── 4. Upsert into ChromaDB ────────────────────────────────────
+            print(f"💾 [5/7] Upserting {len(all_child_texts)} chunks into ChromaDB...")
             chroma_ids, chroma_docs, chroma_metas, chroma_embeds = [], [], [], []
             db_chunks: list[Chunk] = []
             child_embed_idx = 0
@@ -151,9 +162,11 @@ class DocumentIngestionService:
             )
 
             # ── 5. Build BM25 index ────────────────────────────────────────
+            print(f"🔍 [6/7] Building BM25 keyword index...")
             self.bm25.build_index(document_id, all_child_texts)
 
             # ── 6. Save chunks to PostgreSQL ───────────────────────────────
+            print(f"🐘 [7/7] Saving {len(db_chunks)} chunk records to PostgreSQL...")
             db.bulk_save_objects(db_chunks)
 
             # ── 7. Mark document as indexed ────────────────────────────────
@@ -163,6 +176,10 @@ class DocumentIngestionService:
             document.indexed_at = datetime.utcnow()
             db.commit()
 
+            print(f"\\n{'='*50}")
+            print(f"✅ [INGESTION SUCCESS] Document ID: {document_id}")
+            print(f"{'='*50}\\n")
+
             logger.info(
                 "ingestion_success",
                 document_id=document_id,
@@ -171,6 +188,11 @@ class DocumentIngestionService:
             )
 
         except Exception as exc:
+            print(f"\\n{'='*50}")
+            print(f"❌ [INGESTION FAILED] Document ID: {document_id}")
+            print(f"   Error: {str(exc)}")
+            print(f"{'='*50}\\n")
+
             logger.error(
                 "ingestion_failed",
                 document_id=document_id,
