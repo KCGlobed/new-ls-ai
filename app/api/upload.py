@@ -1,11 +1,13 @@
 import os
 import shutil
 import uuid
+from datetime import datetime
 
 import structlog
 import structlog.contextvars
 from fastapi import APIRouter, Depends, File, Request, UploadFile, BackgroundTasks
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.audit import AuditEvent, write_audit
 from app.database.dependencies import get_db
@@ -15,8 +17,25 @@ from app.storage.gcs import GoogleCloudStorage
 router = APIRouter(prefix="/upload", tags=["upload"])
 logger = structlog.get_logger(__name__)
 
-# A fixed system-level uploader ID used when no user auth is provided
+# Fixed system-level uploader ID used when no user auth is provided
 SYSTEM_UPLOADER_ID = "00000000-0000-0000-0000-000000000001"
+
+
+def _ensure_system_user(db: Session) -> None:
+    """
+    Guarantee the system user row exists in the users table.
+    Uses ON CONFLICT DO NOTHING so it is safe to call on every request.
+    This avoids a FK violation when inserting documents with upload_by=SYSTEM_UPLOADER_ID.
+    """
+    db.execute(
+        text("""
+            INSERT INTO users (id, email, hashed_password, created_at, updated_at)
+            VALUES (:id, 'system@lms-widget', '$2b$12$dummy_hash_not_usable', :now, :now)
+            ON CONFLICT (id) DO NOTHING
+        """),
+        {"id": SYSTEM_UPLOADER_ID, "now": datetime.utcnow()},
+    )
+    db.commit()
 
 
 @router.post("/")
@@ -30,8 +49,10 @@ async def upload_document(
     Public endpoint — no authentication required.
     Uploads a file to GCS and triggers background ingestion into ChromaDB.
     """
-    # Use a system uploader ID since auth is disabled for this endpoint
     uploader_id = uuid.UUID(SYSTEM_UPLOADER_ID)
+
+    # Ensure the FK target row exists (idempotent — safe to call every time)
+    _ensure_system_user(db)
 
     structlog.contextvars.bind_contextvars(
         user_id=SYSTEM_UPLOADER_ID,
