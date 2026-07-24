@@ -96,3 +96,19 @@ def login_access_token(
         user_email=user.email,
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.get("/widget-token", response_model=Token)
+def get_widget_token():
+    """
+    Public endpoint — returns a long-lived system JWT for the chat widget.
+    No login required. The token's 'sub' is a fixed system user UUID.
+    The chat endpoint uses this to satisfy authentication without a real user account.
+    """
+    SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
+    access_token = security.create_access_token(
+        subject=SYSTEM_USER_ID,
+        expires_delta=timedelta(days=365),  # 1-year token for widget use
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+

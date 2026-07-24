@@ -8,6 +8,16 @@ from app.database.models.users import Users
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
+# Fixed system user UUID used by the chat widget (no real user account needed)
+SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
+
+
+class SystemUser:
+    """Lightweight stand-in returned when the widget system token is used."""
+    id = SYSTEM_USER_ID
+    email = "system@lms-widget"
+
+
 def get_current_user(
     db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
 ) -> Users:
@@ -25,7 +35,11 @@ def get_current_user(
             raise credentials_exception
     except jwt.InvalidTokenError:
         raise credentials_exception
-        
+
+    # If the token belongs to the widget system user, skip the DB lookup
+    if user_id == SYSTEM_USER_ID:
+        return SystemUser()
+
     user = db.query(Users).filter(Users.id == str(user_id)).first()
     if user is None:
         raise credentials_exception
