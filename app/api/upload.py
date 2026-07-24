@@ -1,20 +1,22 @@
 import os
 import shutil
+import uuid
 
 import structlog
 import structlog.contextvars
 from fastapi import APIRouter, Depends, File, Request, UploadFile, BackgroundTasks
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
 from app.audit import AuditEvent, write_audit
 from app.database.dependencies import get_db
 from app.database.models.document import Document
-from app.database.models.users import Users
 from app.storage.gcs import GoogleCloudStorage
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 logger = structlog.get_logger(__name__)
+
+# A fixed system-level uploader ID used when no user auth is provided
+SYSTEM_UPLOADER_ID = "00000000-0000-0000-0000-000000000001"
 
 
 @router.post("/")
@@ -23,11 +25,16 @@ async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: Users = Depends(get_current_user),
 ):
-    # Bind user to all log calls within this request
+    """
+    Public endpoint — no authentication required.
+    Uploads a file to GCS and triggers background ingestion into ChromaDB.
+    """
+    # Use a system uploader ID since auth is disabled for this endpoint
+    uploader_id = uuid.UUID(SYSTEM_UPLOADER_ID)
+
     structlog.contextvars.bind_contextvars(
-        user_id=str(current_user.id),
+        user_id=SYSTEM_UPLOADER_ID,
         filename=file.filename,
     )
 
@@ -36,8 +43,8 @@ async def upload_document(
         db,
         AuditEvent.DOCUMENT_UPLOAD_STARTED,
         status="success",
-        user_id=str(current_user.id),
-        user_email=current_user.email,
+        user_id=SYSTEM_UPLOADER_ID,
+        user_email="system",
         resource_type="document",
         details={"filename": file.filename, "mime_type": file.content_type},
     )
@@ -52,7 +59,7 @@ async def upload_document(
 
         # Upload to Google Cloud Storage
         storage_provider = GoogleCloudStorage()
-        destination_path = f"users/{current_user.id}/documents/{file.filename}"
+        destination_path = f"uploads/{file.filename}"
         await storage_provider.upload_file(temp_file_path, destination_path)
 
         # Persist document record in the database
@@ -62,7 +69,7 @@ async def upload_document(
             storage_path=destination_path,
             mime_type=file.content_type,
             file_size=file_size,
-            upload_by=current_user.id,
+            upload_by=uploader_id,
         )
         db.add(document)
         db.commit()
@@ -77,8 +84,8 @@ async def upload_document(
             db,
             AuditEvent.DOCUMENT_UPLOAD_SUCCESS,
             status="success",
-            user_id=str(current_user.id),
-            user_email=current_user.email,
+            user_id=SYSTEM_UPLOADER_ID,
+            user_email="system",
             resource_id=str(document.id),
             resource_type="document",
             details={
@@ -90,17 +97,16 @@ async def upload_document(
         )
 
         from app.upload.service import DocumentIngestionService
-        
+
         async def process_document_background():
             service = DocumentIngestionService()
             await service.ingest(
                 document_id=str(document.id),
                 storage_path=destination_path,
                 mime_type=file.content_type,
-                user_id=str(current_user.id)
+                user_id=SYSTEM_UPLOADER_ID,
             )
 
-        # Trigger background task within the FastAPI process
         background_tasks.add_task(process_document_background)
 
         return {
@@ -110,17 +116,13 @@ async def upload_document(
         }
 
     except Exception as exc:
-        logger.error(
-            "upload_failed",
-            exc_info=True,
-            error=str(exc),
-        )
+        logger.error("upload_failed", exc_info=True, error=str(exc))
         write_audit(
             db,
             AuditEvent.DOCUMENT_UPLOAD_FAILURE,
             status="failure",
-            user_id=str(current_user.id),
-            user_email=current_user.email,
+            user_id=SYSTEM_UPLOADER_ID,
+            user_email="system",
             resource_type="document",
             details={"filename": file.filename, "mime_type": file.content_type},
             error_message=str(exc),
