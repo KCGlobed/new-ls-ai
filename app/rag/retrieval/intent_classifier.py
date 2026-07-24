@@ -6,7 +6,7 @@ from app.rag.prompts.query_prompts import INTENT_PROMPT
 
 logger = structlog.get_logger(__name__)
 
-INTENTS = {"factual_lookup", "conceptual_explain", "comparison", "summarization", "unknown"}
+INTENTS = {"factual_lookup", "conceptual_explain", "comparison", "summarization", "conversational", "unknown"}
 
 
 class IntentClassifier:

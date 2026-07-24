@@ -4,6 +4,7 @@ Analyze the user's question and classify it into exactly one of the following in
 - conceptual_explain: Asking how something works or for an explanation of a concept.
 - comparison: Asking to compare two or more things.
 - summarization: Asking for a summary of a topic or document.
+- conversational: Greetings, pleasantries, or general chat that doesn't require searching documents.
 - unknown: None of the above apply clearly.
 
 Return ONLY the intent name in lowercase, with no other text.

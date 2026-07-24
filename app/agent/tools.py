@@ -73,28 +73,36 @@ def execute_get_student_tests_dashboard(arguments: str, lms_db: Session, current
         except ValueError:
             return f"Error: Invalid student ID format: {target_user_id}"
 
+        print(f"\n{'='*50}")
+        print(f"🛠️  [TOOL EXECUTION] get_student_tests_dashboard")
+        print(f"   Target User ID: {target_user_id_int}")
+        
         # Practice Tests Aggregation
-        pt_res = lms_db.execute(text("""
+        q1 = """
             SELECT 
                 COUNT(*) FILTER (WHERE status = true) as completed,
                 COUNT(*) FILTER (WHERE status = false) as pending,
                 AVG(score) as avg_score
             FROM practice_practicetests
             WHERE user_id = :uid
-        """), {"uid": target_user_id_int}).fetchone()
+        """
+        print(f"   SQL (Practice Tests):\n{q1.strip()}")
+        pt_res = lms_db.execute(text(q1), {"uid": target_user_id_int}).fetchone()
 
         pt_completed = pt_res.completed or 0
         pt_pending = pt_res.pending or 0
         pt_avg_score = pt_res.avg_score or 0
 
         # Mock (Assessment) Tests Aggregation
-        mt_res = lms_db.execute(text("""
+        q2 = """
             SELECT 
                 COUNT(*) FILTER (WHERE status = true) as completed,
                 AVG(score) as avg_score
             FROM assessment_assessmenttests
             WHERE user_id = :uid
-        """), {"uid": target_user_id_int}).fetchone()
+        """
+        print(f"\n   SQL (Mock Tests):\n{q2.strip()}")
+        mt_res = lms_db.execute(text(q2), {"uid": target_user_id_int}).fetchone()
 
         mt_completed = mt_res.completed or 0
         mt_avg_score = mt_res.avg_score or 0
@@ -128,19 +136,23 @@ def execute_get_student_overall_progress(arguments: str, lms_db: Session, curren
         except ValueError:
             return f"Error: Invalid student ID format: {target_user_id}"
 
+        print(f"\n{'='*50}")
+        print(f"🛠️  [TOOL EXECUTION] get_student_overall_progress")
+        print(f"   Target User ID: {target_user_id_int}")
+
         # Assigned Courses
-        courses_assigned = lms_db.execute(text("""
-            SELECT COUNT(id) FROM subscription_coursesubjectrestriction WHERE user_id = :uid
-        """), {"uid": target_user_id_int}).scalar() or 0
+        q1 = """SELECT COUNT(id) FROM subscription_coursesubjectrestriction WHERE user_id = :uid"""
+        print(f"   SQL (Assigned Courses): {q1}")
+        courses_assigned = lms_db.execute(text(q1), {"uid": target_user_id_int}).scalar() or 0
         
         # Overall Performance (average of practice and mock)
-        pt_avg = lms_db.execute(text("""
-            SELECT AVG(score) FROM practice_practicetests WHERE user_id = :uid
-        """), {"uid": target_user_id_int}).scalar() or 0
+        q2 = """SELECT AVG(score) FROM practice_practicetests WHERE user_id = :uid"""
+        print(f"   SQL (Practice Avg): {q2}")
+        pt_avg = lms_db.execute(text(q2), {"uid": target_user_id_int}).scalar() or 0
         
-        mt_avg = lms_db.execute(text("""
-            SELECT AVG(score) FROM assessment_assessmenttests WHERE user_id = :uid
-        """), {"uid": target_user_id_int}).scalar() or 0
+        q3 = """SELECT AVG(score) FROM assessment_assessmenttests WHERE user_id = :uid"""
+        print(f"   SQL (Mock Avg): {q3}")
+        mt_avg = lms_db.execute(text(q3), {"uid": target_user_id_int}).scalar() or 0
         
         pt_avg = float(pt_avg) if pt_avg else 0
         mt_avg = float(mt_avg) if mt_avg else 0
@@ -171,11 +183,17 @@ def execute_get_question_solution(arguments: str, lms_db: Session, current_user_
         if not question_id:
             return "Error: Missing question_id argument."
 
-        question = lms_db.execute(text("""
+        print(f"\n{'='*50}")
+        print(f"🛠️  [TOOL EXECUTION] get_question_solution")
+        print(f"   Target Question ID: {question_id}")
+
+        q1 = """
             SELECT id, question_type, level, right_option_id 
             FROM questions_testquestions 
             WHERE id = :qid
-        """), {"qid": question_id}).fetchone()
+        """
+        print(f"   SQL (Fetch Question):\n{q1.strip()}")
+        question = lms_db.execute(text(q1), {"qid": question_id}).fetchone()
         
         if not question:
             return f"No question found with ID: {question_id}"
@@ -190,11 +208,13 @@ def execute_get_question_solution(arguments: str, lms_db: Session, current_user_
         if not question.right_option_id:
             result["solution_text"] = "This question does not have a multiple choice correct option (it may be a simulation or essay)."
         else:
-            correct_option = lms_db.execute(text("""
+            q2 = """
                 SELECT option 
                 FROM questions_questionoptions 
                 WHERE id = :opt_id
-            """), {"opt_id": question.right_option_id}).scalar()
+            """
+            print(f"   SQL (Fetch Option):\n{q2.strip()}")
+            correct_option = lms_db.execute(text(q2), {"opt_id": question.right_option_id}).scalar()
             
             if correct_option:
                 result["solution_text"] = correct_option

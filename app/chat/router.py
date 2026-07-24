@@ -13,7 +13,10 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 logger = structlog.get_logger(__name__)
 
 
-@router.post("/", response_model=ChatResponse)
+import json
+from fastapi.responses import StreamingResponse
+
+@router.post("/")
 async def chat_endpoint(
     chat_req: ChatRequest,
     request: Request,
@@ -24,6 +27,7 @@ async def chat_endpoint(
     """
     Public endpoint for the chat widget. No authorization headers required.
     userId is passed as a query string parameter from the host LMS.
+    Returns a Server-Sent Events (SSE) stream.
     """
     structlog.contextvars.bind_contextvars(
         user_id=userId,
@@ -40,62 +44,62 @@ async def chat_endpoint(
         details={"session_id": chat_req.session_id}
     )
 
-    try:
-        # Fetch long-term memory history for this session (from our DB)
-        memory = LongTermMemory(db)
-        history = memory.get_session_history(chat_req.session_id, limit=6)
+    # Fetch long-term memory history for this session (from our DB)
+    memory = LongTermMemory(db)
+    history = memory.get_session_history(chat_req.session_id, limit=6)
 
-        # Run pipeline
+    async def generate():
         pipeline = RAGPipeline()
-        answer_data, metrics = await pipeline.run(
-            query=chat_req.query,
-            user_id=userId,
-            history=history,
-            db=db,
-            lms_db=lms_db,
-            document_ids=chat_req.document_ids
-        )
+        try:
+            async for chunk in pipeline.run(
+                query=chat_req.query,
+                user_id=userId,
+                history=history,
+                db=db,
+                lms_db=lms_db,
+                document_ids=chat_req.document_ids
+            ):
+                if isinstance(chunk, str):
+                    # Yield text chunk as SSE data
+                    yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                elif isinstance(chunk, dict):
+                    # Final metadata dict
+                    # Save the new turn to history (in our DB)
+                    memory.save_turn(
+                        session_id=chat_req.session_id,
+                        user_id=userId,
+                        user_msg=chat_req.query,
+                        ai_msg=chunk.get("answer", "")
+                    )
 
-        # Save the new turn to history (in our DB)
-        memory.save_turn(
-            session_id=chat_req.session_id,
-            user_id=userId,
-            user_msg=chat_req.query,
-            ai_msg=answer_data["answer"]
-        )
+                    write_audit(
+                        db,
+                        AuditEvent.RAG_QUERY_SUCCESS,
+                        status="success",
+                        user_id=userId,
+                        user_email="lms_user",
+                        details={
+                            "session_id": chat_req.session_id,
+                            "metrics": chunk.get("metrics", {}),
+                            "citations": len(chunk.get("citations", []))
+                        }
+                    )
+                    
+                    # Yield special metadata event
+                    yield f"event: metadata\n"
+                    yield f"data: {json.dumps(chunk)}\n\n"
 
-        write_audit(
-            db,
-            AuditEvent.RAG_QUERY_SUCCESS,
-            status="success",
-            user_id=userId,
-            user_email="lms_user",
-            details={
-                "session_id": chat_req.session_id,
-                "metrics": metrics,
-                "citations": len(answer_data.get("citations", []))
-            }
-        )
+        except Exception as exc:
+            logger.error("chat_request_failed", exc_info=True, error=str(exc))
+            write_audit(
+                db,
+                AuditEvent.RAG_QUERY_FAILURE,
+                status="failure",
+                user_id=userId,
+                user_email="lms_user",
+                details={"session_id": chat_req.session_id},
+                error_message=str(exc)
+            )
+            yield f"data: {json.dumps({'chunk': 'An error occurred while answering your question.'})}\n\n"
 
-        return ChatResponse(
-            answer=answer_data["answer"],
-            citations=answer_data["citations"],
-            metrics=metrics
-        )
-
-    except Exception as exc:
-        logger.error("chat_request_failed", exc_info=True, error=str(exc))
-        write_audit(
-            db,
-            AuditEvent.RAG_QUERY_FAILURE,
-            status="failure",
-            user_id=userId,
-            user_email="lms_user",
-            details={"session_id": chat_req.session_id},
-            error_message=str(exc)
-        )
-        return ChatResponse(
-            answer="An error occurred while answering your question. Please try again.",
-            citations=[],
-            metrics={}
-        )
+    return StreamingResponse(generate(), media_type="text/event-stream")
