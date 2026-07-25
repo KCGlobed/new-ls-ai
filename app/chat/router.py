@@ -149,3 +149,30 @@ def get_chat_history(
     )
     
     return {"sessions": sorted_sessions}
+
+@router.get("/sessions/{session_id}")
+def get_session_messages(
+    session_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Returns all messages for a specific chat session in chronological order.
+    Used to load a past chat into the frontend when clicked from the history sidebar.
+    """
+    messages = (
+        db.query(Conversation)
+        .filter(Conversation.session_id == session_id)
+        .order_by(Conversation.created_at.asc())
+        .all()
+    )
+    
+    formatted_messages = []
+    for msg in messages:
+        formatted_messages.append({
+            "id": str(msg.id),
+            "sender": msg.role,
+            "text": msg.content,
+            "time": msg.created_at.isoformat()
+        })
+        
+    return {"messages": formatted_messages}
