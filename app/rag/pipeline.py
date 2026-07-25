@@ -175,11 +175,15 @@ class RAGPipeline:
         # Include a limited amount of recent history
         messages.extend(history[-6:])
         
-        # Final user prompt combines context + question
-        user_content = f"Context:\n{context}\n\nQuestion: {query}"
-        messages.append({"role": "user", "content": user_content})
-
         is_conversational = intent in ["conversational", "greeting"]
+
+        if is_conversational:
+            user_content = query
+        else:
+            # Final user prompt combines context + question
+            user_content = f"Context:\n{context}\n\nQuestion: {query}"
+            
+        messages.append({"role": "user", "content": user_content})
 
         if is_conversational:
             response = await self.client.chat.completions.create(

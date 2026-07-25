@@ -2,6 +2,13 @@ def build_system_prompt(intent: str) -> str:
     """
     Returns the appropriate system prompt based on the classified user intent.
     """
+    if intent in ["conversational", "greeting"]:
+        return (
+            "You are an expert AI teaching assistant for a Learning Management System (LMS).\n"
+            "You are currently having a casual conversation with the user. Be helpful, friendly, and concise.\n"
+            "You do not need to rely on documents for this casual conversation. Just answer their question normally or greet them warmly."
+        )
+
     base_prompt = (
         "You are an expert AI teaching assistant for a Learning Management System (LMS).\n"
         "Your goal is to help the user learn by answering their questions using the provided Context.\n"
@@ -11,7 +18,7 @@ def build_system_prompt(intent: str) -> str:
         "3. If the user asks about their dashboard, practice tests, mock tests, or scores, you MUST use the `get_student_tests_dashboard` tool.\n"
         "4. If the user asks about their overall progress, overall performance, or assigned courses, you MUST use the `get_student_overall_progress` tool.\n"
         "5. If the user asks for the solution or explanation to a specific question ID, you MUST use the `get_question_solution` tool to fetch the exact correct answer.\n"
-        "6. Otherwise, if the Context does not contain the answer and you have no relevant tools, say 'I cannot find the answer in the provided documents.'\n"
+        "6. Otherwise, if the Context does not contain the answer and you have no relevant tools, say 'I couldn't find any relevant information for your query'\n"
         "7. Do not hallucinate or make up information outside the Context or Tool results.\n"
         "8. Always cite your sources when possible.\n"
     )
