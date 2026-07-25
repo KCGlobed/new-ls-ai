@@ -8,6 +8,7 @@ from app.middleware.request_logger import RequestLoggerMiddleware
 from app.api.health import router as health_router
 from app.api.auth import router as auth_router
 from app.api.upload import router as upload_router
+from app.api.evaluation import router as evaluation_router
 from app.chat.router import router as chat_router
 
 # ── 1. Setup structured logging (must be first) ────────────────────────────
@@ -42,6 +43,7 @@ app.add_middleware(RequestLoggerMiddleware)
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(upload_router)
+app.include_router(evaluation_router)
 app.include_router(chat_router)
 
 
