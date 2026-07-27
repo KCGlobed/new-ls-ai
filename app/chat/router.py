@@ -9,6 +9,7 @@ from app.chat.schemas import ChatRequest, ChatResponse
 from app.rag.pipeline import RAGPipeline
 from app.rag.memory.long_term import LongTermMemory
 from app.database.models.conversation import Conversation
+from app.database.models.chat_log import ChatLog
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 logger = structlog.get_logger(__name__)
@@ -176,3 +177,32 @@ def get_session_messages(
         })
         
     return {"messages": formatted_messages}
+
+@router.get("/logs")
+def get_chat_logs(
+    limit: int = Query(50, description="Max logs to return"),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns the most recent chat logs from the custom ChatLog table.
+    """
+    logs = (
+        db.query(ChatLog)
+        .order_by(ChatLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    
+    return {
+        "logs": [
+            {
+                "id": str(log.id),
+                "user_id": log.user_id,
+                "user_query": log.user_query,
+                "llm_response": log.llm_response,
+                "total_time_ms": log.total_time_ms,
+                "created_at": log.created_at.isoformat()
+            }
+            for log in logs
+        ]
+    }

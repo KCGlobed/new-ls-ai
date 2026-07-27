@@ -57,6 +57,23 @@ AGENT_TOOLS = [
                 "required": ["question_id"],
             },
         },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_lms_sql_query",
+            "description": "Execute a raw SQL query against the LMS PostgreSQL database to answer analytical or data-retrieval questions about users, courses, and enrollments. Use this when the user asks a custom question that requires querying the database.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sql_query": {
+                        "type": "string",
+                        "description": "The exact postgres SQL SELECT query to run."
+                    }
+                },
+                "required": ["sql_query"],
+            },
+        },
     }
 ]
 
@@ -227,6 +244,71 @@ def execute_get_question_solution(arguments: str, lms_db: Session, current_user_
         logger.error("tool_execution_failed", tool="get_question_solution", error=str(e))
         return f"Database error occurred: {str(e)}"
 
+def execute_run_lms_sql_query(arguments: str, lms_db: Session, current_user_id: str) -> str:
+    """Execute a dynamically generated SQL query with strict code-level security."""
+    try:
+        import re
+        args = json.loads(arguments)
+        sql_query = args.get("sql_query", "").strip()
+        
+        if not sql_query:
+            return "Error: Missing sql_query argument."
+
+        print(f"\n{'='*50}")
+        print(f"🛠️  [TOOL EXECUTION] run_lms_sql_query")
+        print(f"   SQL Query:\n{sql_query}")
+
+        # Code-level Security 1: SQL Parsing (Best Practice)
+        # Parse the SQL and ensure it is strictly a SELECT query.
+        import sqlparse
+        
+        parsed = sqlparse.parse(sql_query)
+        if not parsed:
+            return "Error: Could not parse SQL query."
+            
+        # Check all statements in the query string
+        for stmt in parsed:
+            # get_type() returns 'SELECT', 'UPDATE', 'DELETE', etc.
+            if stmt.get_type() != "SELECT":
+                logger.warning("blocked_destructive_sql", user_id=current_user_id, sql=sql_query, type=stmt.get_type())
+                return "Error: Query blocked. Only SELECT statements are permitted."
+            
+        # Security Note: Since we are using SQLAlchemy Session and NOT calling lms_db.commit(), 
+        # any accidental modifications will automatically be rolled back at the end of the request.
+        
+        # Execute query
+        try:
+            # Code-level Security 2: Transaction isolation
+            lms_db.execute(text("SET TRANSACTION READ ONLY;"))
+        except Exception:
+            pass # Some DB dialects/connections might not support this directly in the same block, but it's an extra layer
+            
+        result_proxy = lms_db.execute(text(sql_query))
+        
+        # Safety Check: Limit rows to prevent massive payloads and LLM context explosion
+        rows = result_proxy.fetchmany(50) 
+        columns = result_proxy.keys()
+        
+        result_list = [dict(zip(columns, row)) for row in rows]
+        
+        response_dict = {
+            "row_count": len(result_list),
+            "rows": result_list,
+            "note": "Results limited to first 50 rows for safety." if len(result_list) == 50 else ""
+        }
+        
+        logger.info("tool_executed", tool="run_lms_sql_query", user_id=current_user_id)
+        
+        # Convert datetime/UUID objects to string for JSON serialization
+        def default_serializer(obj):
+            return str(obj)
+            
+        return json.dumps(response_dict, default=default_serializer)
+    except Exception as e:
+        logger.error("tool_execution_failed", tool="run_lms_sql_query", error=str(e))
+        return f"Database error occurred: {str(e)}"
+
+
 # ── 3. Tool Dispatcher ───────────────────────────────────────────────────────
 
 def dispatch_tool(tool_call, lms_db: Session, current_user_id: str) -> str:
@@ -240,5 +322,7 @@ def dispatch_tool(tool_call, lms_db: Session, current_user_id: str) -> str:
         return execute_get_student_overall_progress(arguments, lms_db, current_user_id)
     elif function_name == "get_question_solution":
         return execute_get_question_solution(arguments, lms_db, current_user_id)
+    elif function_name == "run_lms_sql_query":
+        return execute_run_lms_sql_query(arguments, lms_db, current_user_id)
         
     return f"Error: Tool '{function_name}' is not implemented."

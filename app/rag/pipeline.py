@@ -16,6 +16,7 @@ from app.rag.compression.context_compressor import ContextCompressor
 from app.rag.citation.citation_builder import CitationBuilder
 from app.observability.tracker import ObservabilityTracker
 from app.rag.prompts.system_prompt import build_system_prompt
+from app.database.models.chat_log import ChatLog
 
 logger = structlog.get_logger(__name__)
 
@@ -142,8 +143,23 @@ class RAGPipeline:
 
             print(f"\n{'='*50}")
             print(f"✅ [CHAT SUCCESS] Total Time: {metrics.get('total_pipeline_ms', 0):.2f}ms")
+            print(f"👤 USER QUERY: {query}")
+            print(f"🤖 LLM RESPONSE: {answer['answer']}")
             print(f"{'='*50}\n")
             
+            try:
+                chat_log = ChatLog(
+                    user_id=user_id,
+                    user_query=query,
+                    llm_response=answer["answer"],
+                    total_time_ms=metrics.get("total_pipeline_ms", 0)
+                )
+                db.add(chat_log)
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                logger.error("failed_to_save_chat_log", error=str(e))
+                
             # Yield the final metadata (citations + metrics) as a dict
             yield {
                 "answer": answer["answer"],
