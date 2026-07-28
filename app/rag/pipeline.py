@@ -185,7 +185,16 @@ class RAGPipeline:
     async def _call_llm(self, query: str, context: str, intent: str, history: list[dict], lms_db: Session, user_id: str):
         from app.agent.tools import AGENT_TOOLS, dispatch_tool
         
-        system_prompt = build_system_prompt(intent)
+        user_name = None
+        try:
+            from sqlalchemy import text
+            res = lms_db.execute(text("SELECT first_name, last_name FROM users_user WHERE id = :uid"), {"uid": int(user_id)}).fetchone()
+            if res:
+                user_name = f"{res.first_name or ''} {res.last_name or ''}".strip()
+        except Exception as e:
+            logger.warning("failed_to_fetch_user_name", error=str(e))
+
+        system_prompt = build_system_prompt(intent, user_name=user_name)
         messages = [{"role": "system", "content": system_prompt}]
         
         # Include a limited amount of recent history

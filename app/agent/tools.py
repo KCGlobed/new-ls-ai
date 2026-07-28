@@ -62,7 +62,7 @@ AGENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "run_lms_sql_query",
-            "description": "Execute a raw SQL query against the LMS PostgreSQL database to answer analytical or data-retrieval questions about users, courses, and enrollments. Use this when the user asks a custom question that requires querying the database.",
+            "description": "Execute a raw SQL query against the LMS PostgreSQL database to answer analytical or data-retrieval questions about users, courses, subjects, chapters, topics, and enrollments. Use this when the user asks a custom question that requires querying the database.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -258,20 +258,15 @@ def execute_run_lms_sql_query(arguments: str, lms_db: Session, current_user_id: 
         print(f"🛠️  [TOOL EXECUTION] run_lms_sql_query")
         print(f"   SQL Query:\n{sql_query}")
 
-        # Code-level Security 1: SQL Parsing (Best Practice)
-        # Parse the SQL and ensure it is strictly a SELECT query.
-        import sqlparse
-        
-        parsed = sqlparse.parse(sql_query)
-        if not parsed:
-            return "Error: Could not parse SQL query."
-            
-        # Check all statements in the query string
-        for stmt in parsed:
-            # get_type() returns 'SELECT', 'UPDATE', 'DELETE', etc.
-            if stmt.get_type() != "SELECT":
-                logger.warning("blocked_destructive_sql", user_id=current_user_id, sql=sql_query, type=stmt.get_type())
-                return "Error: Query blocked. Only SELECT statements are permitted."
+        # Code-level Security 1: Validation and Normalization
+        from app.rag.prompts.system_prompt import validate_sql, UnsafeQueryError
+        try:
+            sql_query = validate_sql(sql_query, requesting_user_id=int(current_user_id), max_rows=50)
+        except UnsafeQueryError as ue:
+            logger.warning("blocked_unsafe_sql", user_id=current_user_id, sql=sql_query, reason=str(ue))
+            return f"Error: Query blocked. {str(ue)}"
+        except ValueError:
+            return "Error: Invalid user ID format."
             
         # Security Note: Since we are using SQLAlchemy Session and NOT calling lms_db.commit(), 
         # any accidental modifications will automatically be rolled back at the end of the request.
@@ -286,6 +281,7 @@ def execute_run_lms_sql_query(arguments: str, lms_db: Session, current_user_id: 
         result_proxy = lms_db.execute(text(sql_query))
         
         # Safety Check: Limit rows to prevent massive payloads and LLM context explosion
+        # Note: validate_sql already appends LIMIT, but we still fetchmany as a defensive measure
         rows = result_proxy.fetchmany(50) 
         columns = result_proxy.keys()
         
