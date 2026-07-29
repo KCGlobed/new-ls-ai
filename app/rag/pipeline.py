@@ -194,7 +194,7 @@ class RAGPipeline:
         except Exception as e:
             logger.warning("failed_to_fetch_user_name", error=str(e))
 
-        system_prompt = build_system_prompt(intent, user_name=user_name)
+        system_prompt = build_system_prompt(intent, user_name=user_name, user_id=user_id)
         messages = [{"role": "system", "content": system_prompt}]
         
         # Include a limited amount of recent history

@@ -45,7 +45,7 @@ AGENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "get_question_solution",
-            "description": "Fetch the correct solution/option for a specific test question by its ID. Use this when a user asks for the answer or solution to a question.",
+            "description": "Fetch the correct solution/option for a specific test question by its INT database ID. Use this when a user asks for the answer or solution to a question AND you have the integer ID. Do NOT use this for string id_numbers (e.g. KCGBTBFRTMTQ008) - use run_lms_sql_query instead.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -62,7 +62,7 @@ AGENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "run_lms_sql_query",
-            "description": "Execute a raw SQL query against the LMS PostgreSQL database to answer analytical or data-retrieval questions about users, courses, subjects, chapters, topics, and enrollments. Use this when the user asks a custom question that requires querying the database.",
+            "description": "Execute a raw SQL query against the LMS PostgreSQL database to answer analytical or data-retrieval questions about users, courses, subjects, chapters, topics, enrollments, and specific test questions (including id_number, question text, and options). Use this when the user asks a custom question that requires querying the database.",
             "parameters": {
                 "type": "object",
                 "properties": {

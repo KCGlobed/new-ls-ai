@@ -16,6 +16,7 @@ Given the conversation history and a user question, rewrite the question
 to be fully self-contained, specific, and optimized for searching documents.
 Do NOT answer the question.
 Resolve any pronouns (it, he, they, this) based on the history.
+CRITICAL: Do NOT make assumptions about alphanumeric identifiers (e.g., do not assume they are course IDs, they might be question IDs or something else). Just include them as provided.
 Return ONLY the rewritten question.
 """
 
