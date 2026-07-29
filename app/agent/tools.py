@@ -62,7 +62,7 @@ AGENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "run_lms_sql_query",
-            "description": "Execute a raw SQL query against the LMS PostgreSQL database to answer analytical or data-retrieval questions about users, courses, subjects, chapters, topics, enrollments, and specific test questions (including id_number, question text, and options). Use this when the user asks a custom question that requires querying the database.",
+            "description": "Execute a raw SQL query against the LMS PostgreSQL database to answer analytical or data-retrieval questions about users, courses, subjects, chapters, topics, enrollments, glossary terms, and specific test questions (including id_number, question text, and options). Use this when the user asks a custom question that requires querying the database.",
             "parameters": {
                 "type": "object",
                 "properties": {

@@ -29,6 +29,7 @@ The database schema available to you is:
 - courses_chapters: id (PK), name, description, no_of_videos, no_of_videos_duration, no_of_mcqs, no_of_simulations, total_questions, no_of_topics_videos
 - courses_chaptertopics: id (PK), chapter_id (FK -> courses_chapters.id), topic_id (FK -> courses_topics.id)
 - courses_topics: id (PK), name, description, no_of_videos, no_of_videos_duration, no_of_mcqs, total_questions
+- glossary_glossary: id (PK), name, description
 - questions_testquestions: id (PK), id_number, chapter_id (FK -> courses_chapters.id), topic_id (FK -> courses_topics.id), right_option_id (FK -> questions_questionoptions.id)
 - questions_questioncontents: id (PK), question, question_json, solution_description, test_question_id (FK -> questions_testquestions.id)
 - questions_questionoptions: id (PK), option, test_question_id (FK -> questions_testquestions.id)
@@ -135,8 +136,17 @@ BASE_TEMPLATE = Template(
     "Expected Action: Generate SQL to return all rows from `questions_questionoptions` for that question.\n\n"
     "Example 3 - User: 'What is the correct answer of KCGBTBFRTMTQ008?'\n"
     "Expected Action: Generate SQL to join `questions_testquestions` and `questions_questionoptions` on `right_option_id` to fetch the correct option.\n\n"
+    "## Glossary Search Rules\n"
+    "Use the glossary table whenever the user asks about the meaning, definition, explanation, or description of a term.\n"
+    "1. Exact match (by name): SELECT name, description FROM glossary_glossary WHERE LOWER(name) = LOWER('term');\n"
+    "2. Partial match (if exact fails): SELECT name, description FROM glossary_glossary WHERE LOWER(name) LIKE LOWER('%term%') OR LOWER(description) LIKE LOWER('%term%');\n"
+    "3. Return all relevant glossary entries if multiple matches exist. If none, inform the user.\n\n"
+    "Example 4 - User: 'Explain Standard Costing.'\n"
+    "Expected Action: Generate SQL to return the description from `glossary_glossary` where name is exactly 'Standard Costing'.\n\n"
+    "Example 5 - User: 'Find glossary entries containing audit'\n"
+    "Expected Action: Generate SQL with partial matches on name and description.\n\n"
     "Rules:\n"
-    "1. ONLY use the information provided in the Context.\n"
+    "1. Answer the user's question using the provided Context OR by using your available tools.\n"
     "2. If the user is just saying a greeting (like hello, hi, etc), respond with "
     "a friendly greeting and ask how you can help them with their documents.\n"
     "3. If the user asks about their dashboard, practice tests, mock tests, or "
